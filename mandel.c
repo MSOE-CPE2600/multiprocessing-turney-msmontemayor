@@ -10,6 +10,10 @@
 #include <stdio.h>
 #include <unistd.h>
 #include "jpegrw.h"
+#include <wait.h>
+#include <math.h>
+#include <string.h>
+#define MAX_PROC 120
 
 // local routines
 static int iteration_to_color( int i, int max );
@@ -22,22 +26,23 @@ static void show_help();
 int main( int argc, char *argv[] )
 {
 	char c;
+    int active_proc = 0;
 
 	// These are the default configuration values used
 	// if no command line arguments are given.
-	const char *outfile = "mandel.jpg";
+	char outfile[256] = "mandel";
 	double xcenter = 0;
 	double ycenter = 0;
 	double xscale = 4;
-	double yscale = 0; // calc later
 	int    image_width = 1000;
 	int    image_height = 1000;
 	int    max = 1000;
+  int    num = 1;
 
 	// For each command line argument given,
 	// override the appropriate configuration value.
 
-	while((c = getopt(argc,argv,"x:y:s:W:H:m:o:h"))!=-1) {
+	while((c = getopt(argc,argv,"x:y:s:W:H:m:o:n:h"))!=-1) {
 		switch(c) 
 		{
 			case 'x':
@@ -59,8 +64,12 @@ int main( int argc, char *argv[] )
 				max = atoi(optarg);
 				break;
 			case 'o':
-				outfile = optarg;
+				strncpy(outfile, optarg, sizeof(outfile)-1);
+    		outfile[sizeof(outfile)-1] = '\0';
 				break;
+      case 'n':
+        num = atoi(optarg);
+        break;
 			case 'h':
 				show_help();
 				exit(1);
@@ -68,26 +77,46 @@ int main( int argc, char *argv[] )
 		}
 	}
 
-	// Calculate y scale based on x scale (settable) and image sizes in X and Y (settable)
-	yscale = xscale / image_width * image_height;
+    for(int i = 0; i < num; i++){
+        if(active_proc >= MAX_PROC){
+            wait(NULL);
+            active_proc--;
+        }
 
-	// Display the configuration of the image.
-	printf("mandel: x=%lf y=%lf xscale=%lf yscale=%1f max=%d outfile=%s\n",xcenter,ycenter,xscale,yscale,max,outfile);
+        int pid = fork();
+        if (pid == 0){
 
-	// Create a raw image of the appropriate size.
-	imgRawImage* img = initRawImage(image_width,image_height);
 
-	// Fill it with a black
-	setImageCOLOR(img,0);
+					//modifies the x scale for each child process
+          double child_xscale = xscale / pow(1.1, i);
 
-	// Compute the Mandelbrot image
-	compute_image(img,xcenter-xscale/2,xcenter+xscale/2,ycenter-yscale/2,ycenter+yscale/2,max);
+					// Calculate y scale based on x scale (settable) and image sizes in X and Y (settable)
+					double child_yscale = child_xscale / image_width * image_height;
+            
+					char num_name[512];
+					snprintf(num_name, sizeof(num_name), "%s_%03d.jpg", outfile, i);
+          // Display the configuration of the image.
+          printf("mandel: x=%lf y=%lf xscale=%lf yscale=%1f max=%d outfile=%s\n",xcenter,ycenter,child_xscale,child_yscale,max,num_name);
 
-	// Save the image in the stated file.
-	storeJpegImageFile(img,outfile);
+          // Create a raw image of the appropriate size.
+          imgRawImage* img = initRawImage(image_width,image_height);
 
-	// free the mallocs
-	freeRawImage(img);
+          // Fill it with a black
+          setImageCOLOR(img,0);
+
+          // Compute the Mandelbrot image
+          compute_image(img,xcenter-child_xscale/2,xcenter+child_xscale/2,ycenter-child_yscale/2,ycenter+child_yscale/2,max);
+
+          // Save the image in the stated file.
+          storeJpegImageFile(img,num_name);
+
+        	// free the mallocs
+          freeRawImage(img);
+          exit(0);
+        } else if (pid > 0){
+            active_proc++;
+        }
+    }
 
 	return 0;
 }
@@ -177,6 +206,7 @@ void show_help()
 	printf("-W <pixels> Width of the image in pixels. (default=1000)\n");
 	printf("-H <pixels> Height of the image in pixels. (default=1000)\n");
 	printf("-o <file>   Set output file. (default=mandel.bmp)\n");
+  printf("-n <number> The number of files to create\n");
 	printf("-h          Show this help text.\n");
 	printf("\nSome examples are:\n");
 	printf("mandel -x -0.5 -y -0.5 -s 0.2\n");
