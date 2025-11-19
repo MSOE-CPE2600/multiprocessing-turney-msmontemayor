@@ -43,81 +43,81 @@ int main( int argc, char *argv[] )
 
   while((c = getopt(argc,argv,"x:y:s:W:H:m:o:n:p:h"))!=-1) {
     switch(c) 
-	{
-	  case 'x':
-		xcenter = atof(optarg);
-		break;
-	  case 'y':
-		ycenter = atof(optarg);
-		break;
-	  case 's':
-		xscale = atof(optarg);
-		break;
-	  case 'W':
-		image_width = atoi(optarg);
-		break;
-	  case 'H':
-		image_height = atoi(optarg);
-		break;
-	  case 'm':
-		max = atoi(optarg);
-		break;
-	  case 'o':
-		strncpy(outfile, optarg, sizeof(outfile)-1);
-        outfile[sizeof(outfile)-1] = '\0';
-		break;
+	  {
+	    case 'x':
+		    xcenter = atof(optarg);
+		    break;
+	    case 'y':
+		    ycenter = atof(optarg);
+		    break;
+	    case 's':
+		    xscale = atof(optarg);
+		    break;
+	    case 'W':
+        image_width = atoi(optarg);
+        break;
+      case 'H':
+        image_height = atoi(optarg);
+        break;
+      case 'm':
+        max = atoi(optarg);
+        break;
+      case 'o':
+        strncpy(outfile,optarg,sizeof(outfile));
+        break;
       case 'n':
         num = atoi(optarg);
         break;
       case 'p':
         max_proc = atoi(optarg);
-	  case 'h':
-		show_help();
-		exit(1);
-		break;
-	}
+        break;
+      case 'h':
+      default:
+        show_help();
+        exit(0);
+    }
   }
 
-    for(int i = 0; i < num; i++){
-        if(active_proc >= max_proc){
-            wait(NULL);
-            active_proc--;
-        }
-
-        int pid = fork();
-        if (pid == 0){
-
-
-					//modifies the x scale for each child process
-          double child_xscale = xscale / pow(1.1, i);
-
-					// Calculate y scale based on x scale (settable) and image sizes in X and Y (settable)
-					double child_yscale = child_xscale / image_width * image_height;
-            
-					char num_name[512];
-					snprintf(num_name, sizeof(num_name), "%s%d.jpg", outfile, i);
-          // Display the configuration of the image.
-          printf("mandel: x=%lf y=%lf xscale=%lf yscale=%1f max=%d outfile=%s\n",xcenter,ycenter,child_xscale,child_yscale,max,num_name);
-
-          // Create a raw image of the appropriate size.
-          imgRawImage* img = initRawImage(image_width,image_height);
-
-          // Fill it with a black
-          setImageCOLOR(img,0);
-
-          // Compute the Mandelbrot image
-          compute_image(img,xcenter-child_xscale/2,xcenter+child_xscale/2,ycenter-child_yscale/2,ycenter+child_yscale/2,max);
-
-          // Save the image in the stated file.
-          storeJpegImageFile(img,num_name);
-
-        	// free the mallocs
-          freeRawImage(img);
-          exit(0);
-        } else if (pid > 0){
-            active_proc++;
-        }
+  for(int i = 0; i < num; i++){
+    if(active_proc >= max_proc){
+      wait(NULL);
+      active_proc--;
     }
+
+    int pid = fork();
+    if (pid == 0){
+
+
+		//modifies the x scale for each child process
+    double child_xscale = xscale / pow(1.1, i);
+
+		// Calculate y scale based on x scale (settable) and image sizes in X and Y (settable)
+		double child_yscale = child_xscale / image_width * image_height;
+            
+		char num_name[512];
+		snprintf(num_name, sizeof(num_name), "%s%d.jpg", outfile, i);
+    // Display the configuration of the image.
+    printf("mandel: x=%lf y=%lf xscale=%lf yscale=%1f max=%d outfile=%s\n",xcenter,ycenter,child_xscale,child_yscale,max,num_name);
+
+    // Create a raw image of the appropriate size.
+    imgRawImage* img = initRawImage(image_width,image_height);
+
+    // Fill it with a black
+    setImageCOLOR(img,0);
+
+    // Compute the Mandelbrot image
+    compute_image(img,xcenter-child_xscale/2,xcenter+child_xscale/2,ycenter-child_yscale/2,ycenter+child_yscale/2,max);
+
+    // Save the image in the stated file.
+    storeJpegImageFile(img,num_name);
+
+    // free the mallocs
+    freeRawImage(img);
+    exit(0);
+    } else if (pid > 0){
+        active_proc++;
+    }
+  }
 
 	return 0;
 }
