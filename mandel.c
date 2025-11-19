@@ -13,7 +13,7 @@
 #include <wait.h>
 #include <math.h>
 #include <string.h>
-#define MAX_PROC 120
+#define MAX_PROC 20
 
 // local routines
 static int iteration_to_color( int i, int max );
@@ -94,7 +94,7 @@ int main( int argc, char *argv[] )
 					double child_yscale = child_xscale / image_width * image_height;
             
 					char num_name[512];
-					snprintf(num_name, sizeof(num_name), "%s_%03d.jpg", outfile, i);
+					snprintf(num_name, sizeof(num_name), "%s%d.jpg", outfile, i);
           // Display the configuration of the image.
           printf("mandel: x=%lf y=%lf xscale=%lf yscale=%1f max=%d outfile=%s\n",xcenter,ycenter,child_xscale,child_yscale,max,num_name);
 
