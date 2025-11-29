@@ -13,6 +13,18 @@
 #include <wait.h>
 #include <math.h>
 #include <string.h>
+#include <pthread.h>
+
+typedef struct {
+    imgRawImage *img;
+    double xmin;
+    double xmax;
+    double ymin;
+    double ymax;
+    int max;
+    int start_row;
+    int end_row;
+} thread_args;
 
 // local routines
 static int iteration_to_color( int i, int max );
@@ -20,6 +32,7 @@ static int iterations_at_point( double x, double y, int max );
 static void compute_image( imgRawImage *img, double xmin, double xmax,
 									double ymin, double ymax, int max );
 static void show_help();
+static void *thread_compute(void *arg);
 
 
 int main( int argc, char *argv[] )
@@ -29,23 +42,24 @@ int main( int argc, char *argv[] )
 
   // These are the default configuration values used
   // if no command line arguments are given.
-  char outfile[256] = "mandel";
+  char   outfile[256] = "mandel";
   double xcenter = 0;
   double ycenter = 0;
   double xscale = 4;
   int    image_width = 1000;
   int    image_height = 1000;
   int    max = 1000;
-  int    num = 1;
-  int    max_proc = 20; 
+  int    num_proc = 1;
+  int    num_threads = 1;
+  int    max_proc = 20;
   // For each command line argument given,
   // override the appropriate configuration value.
 
-  while((c = getopt(argc,argv,"x:y:s:W:H:m:o:n:p:h"))!=-1) {
+  while((c = getopt(argc,argv,"x:y:s:W:H:m:o:n:p:t:h"))!=-1) {
     switch(c) 
 	  {
 	    case 'x':
-		    xcenter = atof(optarg);
+            xcenter = atof(optarg);
 		    break;
 	    case 'y':
 		    ycenter = atof(optarg);
@@ -66,10 +80,13 @@ int main( int argc, char *argv[] )
         strncpy(outfile,optarg,sizeof(outfile));
         break;
       case 'n':
-        num = atoi(optarg);
+        num_proc = atoi(optarg);
         break;
       case 'p':
         max_proc = atoi(optarg);
+        break;
+      case 't':
+        num_threads = atoi(optarg);
         break;
       case 'h':
       default:
@@ -78,8 +95,8 @@ int main( int argc, char *argv[] )
     }
   }
 
-  for(int i = 0; i < num; i++){
-    if(active_proc >= max_proc){
+  for(int i = 0; i < num_proc; i++){
+    while(active_proc >= max_proc){
       wait(NULL);
       active_proc--;
     }
@@ -106,7 +123,38 @@ int main( int argc, char *argv[] )
     setImageCOLOR(img,0);
 
     // Compute the Mandelbrot image
-    compute_image(img,xcenter-child_xscale/2,xcenter+child_xscale/2,ycenter-child_yscale/2,ycenter+child_yscale/2,max);
+    pthread_t threads[num_threads];
+    thread_args args[num_threads];
+
+    int rows_per_thread = image_height / num_threads;
+    int extra = image_height % num_threads;
+
+    int current_row = 0;
+
+    for (int t = 0; t < num_threads; t++) {
+        int start = current_row;
+        int end = start + rows_per_thread - 1;
+        if (t < extra) end++;
+
+        args[t].img = img;
+        args[t].xmin = xcenter - child_xscale/2;
+        args[t].xmax = xcenter + child_xscale/2;
+        args[t].ymin = ycenter - child_yscale/2;
+        args[t].ymax = ycenter + child_yscale/2;
+        args[t].max = max;
+
+        args[t].start_row = start;
+        args[t].end_row = end;
+
+        pthread_create(&threads[t], NULL, thread_compute, &args[t]);
+
+        current_row = end + 1;
+    }
+
+    // Join
+    for (int t = 0; t < num_threads; t++) {
+      pthread_join(threads[t], NULL);
+    }
 
     // Save the image in the stated file.
     storeJpegImageFile(img,num_name);
@@ -194,6 +242,24 @@ int iteration_to_color( int iters, int max )
 	return color;
 }
 
+void *thread_compute(void *arg)
+{
+    thread_args *t = (thread_args *)arg;
+
+    int width = t->img->width;
+    int height = t->img->height;
+
+    for (int j = t->start_row; j <= t->end_row; j++) {
+        for (int i = 0; i < width; i++) {
+            double x = t->xmin + i * (t->xmax - t->xmin) / width;
+            double y = t->ymin + j * (t->ymax - t->ymin) / height;
+            int iters = iterations_at_point(x, y, t->max);
+            setPixelCOLOR(t->img, i, j, iteration_to_color(iters, t->max));
+        }
+    }
+
+    return NULL;
+}
 
 // Show help message
 void show_help()
@@ -209,6 +275,7 @@ void show_help()
   printf("-o <file>   Set output file. (default=mandel.bmp)\n");
   printf("-p <process>Set the number of processes to use\n");
   printf("-n <number> The number of files to create\n");
+  printf("-t <threads>The number of threads to use per process\n");
   printf("-h          Show this help text.\n");
   printf("\nSome examples are:\n");
   printf("mandel -x -0.5 -y -0.5 -s 0.2\n");
